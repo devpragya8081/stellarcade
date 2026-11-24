@@ -107,12 +107,14 @@ fn test_escrow_balance_summary_unlock_delay_accessor() {
     env.mock_all_auths();
     let (client, _admin, creator, payout_token, beneficiary) = setup(&env);
 
-    
+    // Fund two entries with different unlock delays via release_delay_ledgers.
+    // Entry 0 funded at ledger 0 with delay=5 → releasable at ledger 5.
+    // Entry 1 funded at ledger 0 with same delay → releasable at ledger 5.
     client.configure_creator(&creator, &payout_token, &beneficiary, &5);
     client.fund_escrow(&creator, &400);
     client.fund_escrow(&creator, &600);
 
-    
+    // Before unlock: nothing releasable.
     let summary = client.creator_summary(&creator);
     assert!(summary.exists);
     assert_eq!(summary.total_locked, 1000);
@@ -152,4 +154,42 @@ fn test_globally_paused_shows_in_summary_and_blocks_operations() {
 
     let result_release = client.try_release_available(&creator);
     assert_eq!(result_release, Err(Ok(Error::ContractPaused)));
+}
+
+#[test]
+fn test_multi_entry_release_boundaries_and_rejections() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin, creator, payout_token, beneficiary) = setup(&env);
+
+    client.configure_creator(&creator, &payout_token, &beneficiary, &10);
+
+    // Fund entry 0 at ledger 0 (unlocks at 10)
+    client.fund_escrow(&creator, &100);
+
+    // Fund entry 1 at ledger 5 (unlocks at 15)
+    env.ledger().set_sequence_number(5);
+    client.fund_escrow(&creator, &200);
+
+    // At ledger 5: neither is releasable
+    let err_early = client.try_release_available(&creator);
+    assert_eq!(err_early, Err(Ok(Error::NothingToRelease)));
+
+    // Advance to ledger 10: only entry 0 is releasable
+    env.ledger().set_sequence_number(10);
+    assert_eq!(client.release_available(&creator), 100);
+
+    // Repeated release without advancing ledger fails
+    let err_repeat = client.try_release_available(&creator);
+    assert_eq!(err_repeat, Err(Ok(Error::NothingToRelease)));
+
+    // Advance to ledger 15: entry 1 is releasable
+    env.ledger().set_sequence_number(15);
+    assert_eq!(client.release_available(&creator), 200);
+
+    let summary = client.creator_summary(&creator);
+    assert_eq!(summary.total_locked, 300);
+    assert_eq!(summary.total_released, 300);
+    assert_eq!(summary.releasable_now, 0);
+    assert_eq!(summary.pending_entry_count, 0);
 }

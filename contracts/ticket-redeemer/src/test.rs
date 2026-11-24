@@ -165,3 +165,45 @@ fn test_redemption_markers_prevent_replay() {
     let cancel_err = s.client.try_redeem_ticket(&user, &ticket_id2);
     assert_eq!(cancel_err, Err(Ok(Error::InvalidTicket)));
 }
+
+#[test]
+fn test_queue_history_pagination_bounded_and_mixed() {
+    let s = setup();
+    s.client.init(&s.admin, &s.token, &100, &10);
+    let user = Address::generate(&s.env);
+
+    // Empty pagination
+    let empty_page = s.client.get_queue_entries(&0, &10);
+    assert_eq!(empty_page.len(), 0);
+
+    // Submit 4 tickets
+    for i in 0..4 {
+        s.client.submit_ticket(&user, &i);
+    }
+
+    // Redeem ticket 0, cancel ticket 1, leave 2 and 3 pending
+    s.client.redeem_ticket(&user, &0);
+    s.client.cancel_ticket(&s.admin, &1);
+
+    // Page 1: offset 0, limit 2
+    let page1 = s.client.get_queue_entries(&0, &2);
+    assert_eq!(page1.len(), 2);
+    assert_eq!(page1.get(0).unwrap().status, TicketStatus::Redeemed);
+    assert_eq!(page1.get(1).unwrap().status, TicketStatus::Cancelled);
+
+    // Page 2: offset 2, limit 2
+    let page2 = s.client.get_queue_entries(&2, &2);
+    assert_eq!(page2.len(), 2);
+    assert_eq!(page2.get(0).unwrap().status, TicketStatus::Pending);
+    assert_eq!(page2.get(1).unwrap().status, TicketStatus::Pending);
+
+    // Stale/out-of-bounds offset
+    let oob_page = s.client.get_queue_entries(&10, &5);
+    assert_eq!(oob_page.len(), 0);
+
+    // Summary reflects accurate breakdown
+    let summary = s.client.get_redemption_summary();
+    assert_eq!(summary.total_redeemed, 1);
+    assert_eq!(summary.total_cancelled, 1);
+    assert_eq!(summary.total_pending, 2);
+}

@@ -221,76 +221,108 @@ impl ContractCircuitBreaker {
 // Tests
 // ---------------------------------------------------------------------------
 
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-//     use soroban_sdk::{testutils::Address as _, Address, Env};
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
-//     struct Setup<'a> {
-//         env: Env,
-//         client: ContractCircuitBreakerClient<'a>,
-//         _admin: Address,
-//     }
+    struct Setup<'a> {
+        env: Env,
+        client: ContractCircuitBreakerClient<'a>,
+        _admin: Address,
+    }
 
-//     fn setup() -> Setup<'static> {
-//         let env = Env::default();
-//         env.mock_all_auths();
+    fn setup() -> Setup<'static> {
+        let env = Env::default();
+        env.mock_all_auths();
 
-//         let contract_id = env.register(ContractCircuitBreaker, ());
-//         let client = ContractCircuitBreakerClient::new(&env, &contract_id);
+        let contract_id = env.register(ContractCircuitBreaker, ());
+        let client = ContractCircuitBreakerClient::new(&env, &contract_id);
 
-//         let admin = Address::generate(&env);
-//         client.init(&admin, &3);
+        let admin = Address::generate(&env);
+        client.init(&admin, &3);
 
-//         let client: ContractCircuitBreakerClient<'static> = unsafe { core::mem::transmute(client) };
+        let client: ContractCircuitBreakerClient<'static> = unsafe { core::mem::transmute(client) };
 
-//         Setup {
-//             env,
-//             client,
-//             admin,
-//         }
-//     }
+        Setup {
+            env,
+            client,
+            _admin: admin,
+        }
+    }
 
-//     #[test]
-//     fn test_init() {
-//         let _s = setup();
-//     }
+    #[test]
+    fn test_init() {
+        let _s = setup();
+    }
 
-//     #[test]
-//     fn test_automatic_tripping() {
-//         let s = setup();
-//         let target = Address::generate(&s.env);
+    #[test]
+    fn test_automatic_tripping() {
+        let s = setup();
+        let target = Address::generate(&s.env);
 
-//         // First failure
-//         s.client.record_failure(&target, &1);
-//         let state = s.client.breaker_state(&target).unwrap();
-//         assert_eq!(state.failure_count, 1);
-//         assert_eq!(state.status, BreakerStatus::Closed);
+        // First failure
+        s.client.record_failure(&target, &1);
+        let state = s.client.breaker_state(&target).unwrap();
+        assert_eq!(state.failure_count, 1);
+        assert_eq!(state.status, BreakerStatus::Closed);
 
-//         // Second failure
-//         s.client.record_failure(&target, &1);
-//         let state = s.client.breaker_state(&target).unwrap();
-//         assert_eq!(state.failure_count, 2);
-//         assert_eq!(state.status, BreakerStatus::Closed);
+        // Second failure
+        s.client.record_failure(&target, &1);
+        let state = s.client.breaker_state(&target).unwrap();
+        assert_eq!(state.failure_count, 2);
+        assert_eq!(state.status, BreakerStatus::Closed);
 
-//         // Third failure - trips
-//         s.client.record_failure(&target, &1);
-//         let state = s.client.breaker_state(&target).unwrap();
-//         assert_eq!(state.failure_count, 3);
-//         assert_eq!(state.status, BreakerStatus::Open);
-//     }
+        // Third failure - trips
+        s.client.record_failure(&target, &1);
+        let state = s.client.breaker_state(&target).unwrap();
+        assert_eq!(state.failure_count, 3);
+        assert_eq!(state.status, BreakerStatus::Open);
+    }
 
-//     #[test]
-//     fn test_manual_trip_and_reset() {
-//         let s = setup();
-//         let target = Address::generate(&s.env);
+    #[test]
+    fn test_manual_trip_and_reset() {
+        let s = setup();
+        let target = Address::generate(&s.env);
 
-//         s.client.trip(&target);
-//         assert_eq!(s.client.breaker_state(&target).unwrap().status, BreakerStatus::Open);
+        s.client.trip(&target);
+        assert_eq!(
+            s.client.breaker_state(&target).unwrap().status,
+            BreakerStatus::Open
+        );
 
-//         s.client.reset(&target);
-//         let state = s.client.breaker_state(&target).unwrap();
-//         assert_eq!(state.status, BreakerStatus::Closed);
-//         assert_eq!(state.failure_count, 0);
-//     }
-// }
+        s.client.reset(&target);
+        let state = s.client.breaker_state(&target).unwrap();
+        assert_eq!(state.status, BreakerStatus::Closed);
+        assert_eq!(state.failure_count, 0);
+    }
+
+    #[test]
+    fn test_threshold_window_boundaries() {
+        let s = setup();
+        let target = Address::generate(&s.env);
+
+        // Under threshold: remains Closed
+        s.client.record_failure(&target, &1);
+        s.client.record_failure(&target, &1);
+        assert_eq!(
+            s.client.breaker_state(&target).unwrap().status,
+            BreakerStatus::Closed
+        );
+
+        // Exactly at threshold (3): becomes Open
+        s.client.record_failure(&target, &1);
+        assert_eq!(
+            s.client.breaker_state(&target).unwrap().status,
+            BreakerStatus::Open
+        );
+
+        // Subsequent failure while already Open preserves Open and does not increment
+        s.client.record_failure(&target, &1);
+        assert_eq!(s.client.breaker_state(&target).unwrap().failure_count, 3);
+        assert_eq!(
+            s.client.breaker_state(&target).unwrap().status,
+            BreakerStatus::Open
+        );
+    }
+}

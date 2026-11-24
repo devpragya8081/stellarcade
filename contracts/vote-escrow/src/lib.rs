@@ -41,6 +41,10 @@ impl VoteEscrow {
             unlock_time > env.ledger().timestamp(),
             "Unlock time must be in future"
         );
+        assert!(
+            storage::get_lock(&env, lock_id).is_none(),
+            "Lock ID already exists"
+        );
 
         let locked_at = env.ledger().timestamp();
         let duration = unlock_time - locked_at;
@@ -75,6 +79,15 @@ impl VoteEscrow {
         assert!(
             env.ledger().timestamp() >= record.unlock_time,
             "Lock period not expired"
+        );
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("Not initialized");
+        assert!(
+            admin == stored_admin || admin == record.locker,
+            "Unauthorized caller"
         );
 
         record.unlocked = true;
@@ -200,5 +213,56 @@ mod test {
         let pressure = client.unlock_pressure(&999);
         assert!(!pressure.exists);
         assert!(pressure.configured);
+    }
+
+    #[test]
+    #[should_panic(expected = "Lock ID already exists")]
+    fn test_duplicate_lock_id_rejected() {
+        let env = Env::default();
+        env.ledger().set_timestamp(1000);
+        let (_admin, client) = setup(&env);
+        let locker = Address::generate(&env);
+
+        client.lock(&locker, &1, &500, &2000);
+        assert_eq!(client.lock_duration_breakdown().total_locks, 1);
+        assert_eq!(client.lock_duration_breakdown().total_locked_amount, 500);
+
+        // Duplicate lock ID panics and doesn't overwrite
+        client.lock(&locker, &1, &300, &2500);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized caller")]
+    fn test_unauthorized_unlock_rejected() {
+        let env = Env::default();
+        env.ledger().set_timestamp(1000);
+        let (_admin, client) = setup(&env);
+        let locker = Address::generate(&env);
+        let imposter = Address::generate(&env);
+
+        client.lock(&locker, &1, &500, &2000);
+
+        let mut ledger = env.ledger().get();
+        ledger.timestamp = 2500;
+        env.ledger().set(ledger);
+
+        client.unlock(&imposter, &1);
+    }
+
+    #[test]
+    fn test_locker_can_unlock() {
+        let env = Env::default();
+        env.ledger().set_timestamp(1000);
+        let (_admin, client) = setup(&env);
+        let locker = Address::generate(&env);
+
+        client.lock(&locker, &1, &500, &2000);
+
+        let mut ledger = env.ledger().get();
+        ledger.timestamp = 2500;
+        env.ledger().set(ledger);
+
+        let amt = client.unlock(&locker, &1);
+        assert_eq!(amt, 500);
     }
 }

@@ -1,5 +1,8 @@
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    Address, Env,
+};
 
 fn setup(env: &Env) -> (CreatorRoyaltiesClient<'_>, Address, Address, Address) {
     let admin = Address::generate(env);
@@ -183,4 +186,41 @@ fn test_double_init_fails() {
 
     let result = client.try_init(&admin);
     assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
+}
+
+#[test]
+fn test_multiple_schedules_interval_and_boundary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _admin, creator, token) = setup(&env);
+
+    client.configure(&creator, &500, &token);
+    client.record_accrual(&creator, &1_000_000);
+
+    // Set and update payout interval
+    client.set_payout_interval(&creator, &50);
+    assert_eq!(client.payout_schedule(&creator).interval_ledgers, 50);
+    client.set_payout_interval(&creator, &100);
+    assert_eq!(client.payout_schedule(&creator).interval_ledgers, 100);
+
+    // Schedule two payouts before claiming
+    client.schedule_payout(&creator, &0, &300_000);
+    client.schedule_payout(&creator, &10, &400_000);
+
+    // First claim at ledger 0 claims only entry 1
+    let claimed = client.claim_scheduled(&creator);
+    assert_eq!(claimed, 300_000);
+
+    // Second claim at ledger 0 returns NothingToClaim
+    let err = client.try_claim_scheduled(&creator);
+    assert_eq!(err, Err(Ok(Error::NothingToClaim)));
+
+    // Fast-forward to ledger 10
+    env.ledger().with_mut(|l| l.sequence_number = 10);
+    let claimed2 = client.claim_scheduled(&creator);
+    assert_eq!(claimed2, 400_000);
+
+    let summary = client.accrual_summary(&creator);
+    assert_eq!(summary.total_paid, 700_000);
+    assert_eq!(summary.pending, 300_000);
 }

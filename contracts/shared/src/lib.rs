@@ -172,3 +172,33 @@ pub mod events {
         symbol_short!("bnd_upd")
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_calculate_fee_edge_cases() {
+        // Zero basis points
+        assert_eq!(calculate_fee(1_000_000, 0), Ok(0));
+
+        // Full basis points
+        assert_eq!(
+            calculate_fee(1_000_000, BASIS_POINTS_DIVISOR),
+            Ok(1_000_000)
+        );
+
+        // Partial fee with rounding dust (500 bps = 5%)
+        assert_eq!(calculate_fee(1_000, 500), Ok(50));
+        assert_eq!(calculate_fee(999, 1), Ok(0)); // 999 * 1 / 10000 = 0
+
+        // Negative amount rejected
+        assert_eq!(calculate_fee(-1, 500), Err(SharedError::InvalidAmount));
+
+        // Fee bps exceeding maximum rejected
+        assert_eq!(calculate_fee(1000, 10_001), Err(SharedError::InvalidAmount));
+
+        // Overflow near i128 limits rejected with Overflow
+        assert_eq!(calculate_fee(i128::MAX, 500), Err(SharedError::Overflow));
+    }
+}

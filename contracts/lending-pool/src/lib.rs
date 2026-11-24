@@ -18,6 +18,23 @@ pub enum DataKey {
     PoolTotals,
 }
 
+fn safe_utilization_bps(borrowed: i128, supplied: i128) -> u32 {
+    if supplied == 0 {
+        return 0;
+    }
+    if borrowed >= supplied {
+        return 10_000;
+    }
+    if let Some(prod) = borrowed.checked_mul(10_000) {
+        return (prod / supplied) as u32;
+    }
+    let s_scaled = supplied / 10_000;
+    if s_scaled == 0 {
+        return 0;
+    }
+    (borrowed / s_scaled) as u32
+}
+
 #[contract]
 pub struct LendingPool;
 
@@ -56,7 +73,8 @@ impl LendingPool {
             .set(&DataKey::LiquidationBufferBps, &liquidation_buffer_bps);
     }
 
-   
+    /// Uses basis points with floor division (`borrowed * 10_000 / supplied`).
+    /// Returns zeroed fields when the pool is not initialized or has no tracked totals yet.
     pub fn utilization_snapshot(env: Env) -> UtilizationSnapshot {
         let configured = env.storage().instance().has(&DataKey::Admin);
         let Some(totals) = storage::get_pool_totals(&env) else {
@@ -73,11 +91,7 @@ impl LendingPool {
             .total_supplied
             .checked_sub(totals.total_borrowed)
             .expect("Overflow");
-        let utilization_bps = if totals.total_supplied == 0 {
-            0
-        } else {
-            ((totals.total_borrowed * 10_000i128) / totals.total_supplied) as u32
-        };
+        let utilization_bps = safe_utilization_bps(totals.total_borrowed, totals.total_supplied);
 
         UtilizationSnapshot {
             configured,
@@ -88,7 +102,8 @@ impl LendingPool {
         }
     }
 
-    
+    /// Named pool-utilization snapshot extending `utilization_snapshot` with a
+    /// `healthy` flag comparing utilization to the liquidation buffer threshold.
     pub fn pool_utilization_snapshot(env: Env) -> PoolUtilizationSnapshot {
         let configured = env.storage().instance().has(&DataKey::Admin);
         let liquidation_buffer_bps: u32 = env
@@ -113,11 +128,7 @@ impl LendingPool {
             .total_supplied
             .checked_sub(totals.total_borrowed)
             .expect("Overflow");
-        let utilization_bps = if totals.total_supplied == 0 {
-            0
-        } else {
-            ((totals.total_borrowed * 10_000i128) / totals.total_supplied) as u32
-        };
+        let utilization_bps = safe_utilization_bps(totals.total_borrowed, totals.total_supplied);
 
         PoolUtilizationSnapshot {
             configured,

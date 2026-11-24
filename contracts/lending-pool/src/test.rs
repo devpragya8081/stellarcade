@@ -129,3 +129,22 @@ fn test_interest_cooldown_accessor_zero_cooldown_always_ready() {
     let acc = client.interest_cooldown_accessor(&99u64, &0u64);
     assert!(acc.ready);
 }
+
+#[test]
+fn test_utilization_near_i128_max() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin) = setup_client(&env);
+
+    let max_supplied = i128::MAX;
+    let half_borrowed = max_supplied / 2;
+
+    client.set_pool_totals(&admin, &max_supplied, &half_borrowed);
+    let snapshot = client.utilization_snapshot();
+    assert_eq!(snapshot.utilization_bps, 5_000);
+
+    // Full borrow near max
+    client.set_pool_totals(&admin, &max_supplied, &max_supplied);
+    let snapshot_full = client.utilization_snapshot();
+    assert_eq!(snapshot_full.utilization_bps, 10_000);
+}

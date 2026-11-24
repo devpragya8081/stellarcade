@@ -56,8 +56,7 @@ impl LendingPool {
             .set(&DataKey::LiquidationBufferBps, &liquidation_buffer_bps);
     }
 
-    /// Uses basis points with floor division (`borrowed * 10_000 / supplied`).
-    /// Returns zeroed fields when the pool is not initialized or has no tracked totals yet.
+   
     pub fn utilization_snapshot(env: Env) -> UtilizationSnapshot {
         let configured = env.storage().instance().has(&DataKey::Admin);
         let Some(totals) = storage::get_pool_totals(&env) else {
@@ -89,8 +88,7 @@ impl LendingPool {
         }
     }
 
-    /// Named pool-utilization snapshot extending `utilization_snapshot` with a
-    /// `healthy` flag comparing utilization to the liquidation buffer threshold.
+    
     pub fn pool_utilization_snapshot(env: Env) -> PoolUtilizationSnapshot {
         let configured = env.storage().instance().has(&DataKey::Admin);
         let liquidation_buffer_bps: u32 = env

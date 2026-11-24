@@ -173,6 +173,11 @@ impl ContractCircuitBreaker {
 
         data.status = BreakerStatus::Open;
         env.storage().persistent().set(&key, &data);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_BUMP_THRESHOLD,
+            PERSISTENT_BUMP_LEDGERS,
+        );
 
         BreakerTripped { contract_id }.publish(&env);
 
@@ -192,6 +197,11 @@ impl ContractCircuitBreaker {
         };
 
         env.storage().persistent().set(&key, &data);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_BUMP_THRESHOLD,
+            PERSISTENT_BUMP_LEDGERS,
+        );
 
         BreakerReset { contract_id }.publish(&env);
 

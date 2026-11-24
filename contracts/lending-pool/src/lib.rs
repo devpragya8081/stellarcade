@@ -18,6 +18,23 @@ pub enum DataKey {
     PoolTotals,
 }
 
+fn safe_utilization_bps(borrowed: i128, supplied: i128) -> u32 {
+    if supplied == 0 {
+        return 0;
+    }
+    if borrowed >= supplied {
+        return 10_000;
+    }
+    if let Some(prod) = borrowed.checked_mul(10_000) {
+        return (prod / supplied) as u32;
+    }
+    let s_scaled = supplied / 10_000;
+    if s_scaled == 0 {
+        return 0;
+    }
+    (borrowed / s_scaled) as u32
+}
+
 #[contract]
 pub struct LendingPool;
 
@@ -74,11 +91,7 @@ impl LendingPool {
             .total_supplied
             .checked_sub(totals.total_borrowed)
             .expect("Overflow");
-        let utilization_bps = if totals.total_supplied == 0 {
-            0
-        } else {
-            ((totals.total_borrowed * 10_000i128) / totals.total_supplied) as u32
-        };
+        let utilization_bps = safe_utilization_bps(totals.total_borrowed, totals.total_supplied);
 
         UtilizationSnapshot {
             configured,
@@ -115,11 +128,7 @@ impl LendingPool {
             .total_supplied
             .checked_sub(totals.total_borrowed)
             .expect("Overflow");
-        let utilization_bps = if totals.total_supplied == 0 {
-            0
-        } else {
-            ((totals.total_borrowed * 10_000i128) / totals.total_supplied) as u32
-        };
+        let utilization_bps = safe_utilization_bps(totals.total_borrowed, totals.total_supplied);
 
         PoolUtilizationSnapshot {
             configured,

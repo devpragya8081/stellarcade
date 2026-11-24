@@ -21,7 +21,16 @@ impl TokenStreamingContract {
 
         let elapsed = (now - stream.start_ts) as u128;
         let duration = (stream.stop_ts - stream.start_ts) as u128;
-        (stream.deposit * elapsed) / duration
+        if duration == 0 {
+            return stream.deposit;
+        }
+        if let Some(prod) = stream.deposit.checked_mul(elapsed) {
+            prod / duration
+        } else {
+            let whole = stream.deposit / duration;
+            let rem = stream.deposit % duration;
+            whole * elapsed + (rem * elapsed) / duration
+        }
     }
 }
 

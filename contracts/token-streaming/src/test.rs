@@ -190,3 +190,19 @@ fn test_cancellation_rounding_at_start_and_end_boundaries() {
     assert_eq!(payout4, 100);
     assert_eq!(refund4, 0);
 }
+
+#[test]
+fn test_vesting_arithmetic_overflow_safe() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, sender, recipient) = setup(&env);
+
+    // Huge deposit that fits in u128 but deposit * elapsed exceeds u128
+    let huge_deposit: u128 = u128::MAX / 2;
+    let stream_id = client.create_stream(&sender, &recipient, &huge_deposit, &1000, &3000);
+
+    // Midpoint timestamp 2000: mathematically vested amount is huge_deposit / 2
+    env.ledger().set_timestamp(2000);
+    let vested = client.get_available_balance(&stream_id);
+    assert_eq!(vested, huge_deposit / 2);
+}

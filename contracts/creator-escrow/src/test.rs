@@ -107,14 +107,12 @@ fn test_escrow_balance_summary_unlock_delay_accessor() {
     env.mock_all_auths();
     let (client, _admin, creator, payout_token, beneficiary) = setup(&env);
 
-    // Fund two entries with different unlock delays via release_delay_ledgers.
-    // Entry 0 funded at ledger 0 with delay=5 → releasable at ledger 5.
-    // Entry 1 funded at ledger 0 with same delay → releasable at ledger 5.
+    
     client.configure_creator(&creator, &payout_token, &beneficiary, &5);
     client.fund_escrow(&creator, &400);
     client.fund_escrow(&creator, &600);
 
-    // Before unlock: nothing releasable.
+    
     let summary = client.creator_summary(&creator);
     assert!(summary.exists);
     assert_eq!(summary.total_locked, 1000);
